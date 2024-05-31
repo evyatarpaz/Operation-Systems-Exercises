@@ -124,18 +124,20 @@ make_move() {
     board[$from_index]="."
 }
 
-# Main simulation loop
+
 initialize_board
 current_move=0
 total_moves=$(echo "$UCI_MOVES" | wc -w)
 move_array=($UCI_MOVES)
 
+echo "Move $current_move/$total_moves"
+display_board board[@]
+
 while true; do
-    echo "Move $current_move/$total_moves"
-    display_board board[@]
     echo -n "Press 'd' to move forward, 'a' to move back, 'w' to go to the start, 's' to go to the end, 'q' to quit: "
     read -n 1 key
     echo ""
+    valid_key=true
     case $key in
         d)
             if [ $current_move -lt $total_moves ]; then
@@ -143,6 +145,7 @@ while true; do
                 current_move=$((current_move + 1))
             else
                 echo "No more moves available."
+                valid_key=false
             fi
             ;;
         a)
@@ -171,7 +174,12 @@ while true; do
             break
             ;;
         *)
-            echo "Invalid key!"
+            echo "Invalid key pressed: $key"
+            valid_key=false
             ;;
     esac
+    if [ "$valid_key" = true ]; then
+        echo "Move $current_move/$total_moves"
+        display_board board[@]
+    fi
 done
