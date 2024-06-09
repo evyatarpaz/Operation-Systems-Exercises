@@ -1,204 +1,305 @@
 #!/bin/bash
 
-# Define color variables
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
-if ! command -v jq &> /dev/null
-then
-    echo -e "${RED}jq could not be found. Please install jq manually and rerun the script.${NC}"
-    echo "To install jq on Linux Mint, you can follow these steps:"
-    echo "1. Update your package list: sudo apt update"
-    echo "2. Install jq: sudo apt install jq -y"
-    exit 1
-fi
-
 CONFIG_FILE="tests_config.json"
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo -e "${RED}Error: Configuration file '$CONFIG_FILE' not found.${NC}"
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo -e "${RED}Config file $CONFIG_FILE not found!${NC}"
     exit 1
 fi
 
-check_part_1() {
-    local part="part_1"
-    echo -e "${BLUE}Checking $part...${NC}"
-
-    local test_count=$(jq ".${part} | length" "$CONFIG_FILE")
-    for (( i=0; i<$test_count; i++ )); do
-        local input=$(jq -r ".${part}[$i].input" "$CONFIG_FILE")
-        local params=$(jq -r ".${part}[$i].params" "$CONFIG_FILE")
-        local expected_dir=$(jq -r ".${part}[$i].expected_dir" "$CONFIG_FILE")
-        local expected_tree=$(jq -r ".${part}[$i].expected_tree" "$CONFIG_FILE")
-        local expected_output=$(jq -r ".${part}[$i].expected_output" "$CONFIG_FILE")
-
-        echo -e "${YELLOW}Running test $((i+1))...${NC}"
-
-        cd ..
-
-        file1="split_pgn.sh"
-        file2="pgn_split"
-
-        if [ -f "$file1" ]; then
-            cp "$file1" "$OLDPWD"
-            script_to_run="$file1"
-        elif [ -f "$file2" ]; then
-            cp "$file2" "$OLDPWD"
-            script_to_run="$file2"
-        else
-            echo -e "${RED}Error: Neither $file1 nor $file2 exists.${NC}"
-            cd "$OLDPWD"
-            return
-        fi
-
-        cd "$OLDPWD"
-
-        if [ ! -f "$input" ]; then
-            echo -e "${RED}Error: File '$input' does not exist.${NC}"
-            return
-        fi
-
-        script_output=$(./"$script_to_run" "$input" "$params" 2>&1)
-
-        if [ -d "$expected_dir" ]; then
-            echo -e "${GREEN}Directory '$expected_dir' created successfully.${NC}"
-            cd "$expected_dir"
-
-            tree_output=$(tree)
-            expected_tree_output=$(cat "../$expected_tree")
-
-            if [ "$tree_output" == "$expected_tree_output" ]; then
-                echo -e "${GREEN}Test $((i+1)) passed: Directory structure matches.${NC}"
-            else
-                echo -e "${RED}Test $((i+1)) failed: Directory structure does not match.${NC}"
-                echo "Expected:"
-                echo "$expected_tree_output"
-                echo "Got:"
-                echo "$tree_output"
-            fi
-
-            cd ..
-
-            for file in "$expected_dir"/*; do
-                if [ -f "$file" ]; then
-                    expected_file="splited_pgns/$(basename "$file")"
-                    if [ -f "$expected_file" ]; then
-                        if diff -q -Z "$file" "$expected_file" > /dev/null; then
-                            echo -e "${GREEN}File '$(basename "$file")' matches expected output.${NC}"
-                        else
-                            echo -e "${RED}File '$(basename "$file")' does not match expected output.${NC}"
-                            echo "Differences:"
-                            diff -Z "$file" "$expected_file"
-                        fi
-                    else
-                        echo -e "${RED}Expected file '$(basename "$file")' does not exist.${NC}"
-                    fi
-                fi
-            done
-
-            expected_script_output=$(cat "$expected_output")
-            if [ "$script_output" == "$expected_script_output" ]; then
-                echo -e "${GREEN}Test $((i+1)) passed: Script output matches.${NC}"
-            else
-                echo -e "${RED}Test $((i+1)) failed: Script output does not match.${NC}"
-                echo "Expected:"
-                echo "$expected_script_output"
-                echo "Got:"
-                echo "$script_output"
-            fi
-
-            rm -rf "$expected_dir"
-        else
-            echo -e "${RED}Error: Directory '$expected_dir' was not created.${NC}"
+check_missing_files() {
+    local OUTPUT_DIR=$1
+    local EXPECTED_OUTPUT_DIR=$2
+    MISSING_FILES=()
+    for EXPECTED_FILE in "$EXPECTED_OUTPUT_DIR"/*; do
+        FILE_NAME=$(basename "$EXPECTED_FILE")
+        if [[ ! -f "$OUTPUT_DIR/$FILE_NAME" ]]; then
+            MISSING_FILES+=("$FILE_NAME")
         fi
     done
 
-    rm -f "$script_to_run"
+    if [[ ${#MISSING_FILES[@]} -ne 0 ]]; then
+        echo -e "${RED}Missing files: ${MISSING_FILES[*]}${NC}"
+    else
+        echo -e "${GREEN}All expected files are created.${NC}"
+    fi
 }
 
+preprocess_file() {
+    local FILE=$1
+    sed -e '/^[[:space:]]*$/d' -e ':a' -e 'N' -e '$!ba' -e 's/\n/\x0/' -e 's/[[:space:]]*$//' -e 's/\x0/\n/g' "$FILE" | sed -e '$a\'
+}
 
-check_part_2() {
-    local part="part_2"
-    echo -e "${BLUE}Checking $part...${NC}"
-
-    local test_count=$(jq ".${part} | length" "$CONFIG_FILE")
-    for (( i=0; i<$test_count; i++ )); do
-        local input=$(jq -r ".${part}[$i].input" "$CONFIG_FILE")
-        local moves=$(jq -r ".${part}[$i].moves" "$CONFIG_FILE")
-        local expected_output_ver1=$(jq -r ".${part}[$i].expected_output_ver1" "$CONFIG_FILE")
-        local expected_output_ver2=$(jq -r ".${part}[$i].expected_output_ver2" "$CONFIG_FILE")
-        
-        echo -e "${YELLOW}Running test $((i+1))...${NC}"
-
-        cd ..
-
-        file="chess_sim.sh"
-
-        if [ -f "$file" ]; then
-            cp "$file" "$OLDPWD"
-        else
-            echo -e "${RED}Error: $file does not exist.${NC}"
-            cd "$OLDPWD"
-            continue
-        fi
-
-        cd "$OLDPWD"
-
-        if [ ! -f "$input" ]; then
-            echo -e "${RED}Error: File '$input' does not exist.${NC}"
-            continue
-        fi
-
-        output_dir="tests/part_2_test_outputs"
-        mkdir -p "$output_dir"
-        temp_output_file="${output_dir}/part_2_test_capmemel24_$((i+1))_output.txt"
-
-        # Adding delay to ensure the program has enough time to process inputs
-        echo "$moves" | ./chess_sim.sh "$input" > "$temp_output_file" 2>&1
-        sleep 0.5  # Adjust the delay as needed
-
-        if ( [ -n "$expected_output_ver1" ] && [ -f "$expected_output_ver1" ] && diff -q -Z "$temp_output_file" "$expected_output_ver1" > /dev/null ) || 
-           ( [ -n "$expected_output_ver2" ] && [ -f "$expected_output_ver2" ] && diff -q -Z "$temp_output_file" "$expected_output_ver2" > /dev/null ); then
-            if [ -n "$expected_output_ver1" ] && [ -f "$expected_output_ver1" ] && diff -q -Z "$temp_output_file" "$expected_output_ver1" > /dev/null; then
-                echo -e "${GREEN}Test $((i+1)) passed: I see you implemented the special moves! Good job.${NC}"
-            else
-                echo -e "${GREEN}Test $((i+1)) passed.${NC}"
+compare_file_contents() {
+    local OUTPUT_DIR=$1
+    local EXPECTED_OUTPUT_DIR=$2
+    CONTENT_MISMATCH=0
+    for EXPECTED_FILE in "$EXPECTED_OUTPUT_DIR"/*; do
+        FILE_NAME=$(basename "$EXPECTED_FILE")
+        if [[ -f "$OUTPUT_DIR/$FILE_NAME" ]]; then
+            EXPECTED_CONTENT=$(preprocess_file "$EXPECTED_FILE")
+            OUTPUT_CONTENT=$(preprocess_file "$OUTPUT_DIR/$FILE_NAME")
+            DIFF=$(diff <(echo "$EXPECTED_CONTENT") <(echo "$OUTPUT_CONTENT"))
+            if [[ -n "$DIFF" ]]; then
+                CONTENT_MISMATCH=1
+                FAIL_DIR="fails/test_$(basename "$OUTPUT_DIR")"
+                mkdir -p "$FAIL_DIR"
+                echo "$DIFF" > "$FAIL_DIR/diff_$FILE_NAME.txt"
             fi
-        else
-            echo -e "${RED}Test $((i+1)) failed.${NC}"
-            if [ -n "$expected_output_ver1" ] && [ -f "$expected_output_ver1" ]; then
-                echo -e "${YELLOW}Differences with expected_output_ver1:${NC}"
-                diff -u -Z --color "$temp_output_file" "$expected_output_ver1"
-            fi
-            if [ -n "$expected_output_ver2" ] && [ -f "$expected_output_ver2" ]; then
-                echo -e "${YELLOW}Differences with expected_output_ver2:${NC}"
-                diff -u -Z --color "$temp_output_file" "$expected_output_ver2"
-            fi
-            read -p "Press Enter to continue to the next test..."
         fi
-
-        rm -f "$temp_output_file"
     done
 
-    rm -f "chess_sim.sh"
+    if [[ $CONTENT_MISMATCH -eq 0 ]]; then
+        echo -e "${GREEN}All file contents match the expected output.${NC}"
+    fi
 }
 
+run_part_1_tests() {
+    echo -e "${CYAN}========================================${NC}"
+    echo -e "${CYAN}          Beginning Tests for Part 1          ${NC}"
+    echo -e "${CYAN}========================================${NC}"
 
+    cd ..
 
-while true; do
-    echo -e "${BLUE}Select an option:${NC}"
-    echo "1. Check part 1"
-    echo "2. Check part 2"
-    echo "3. Exit"
+    if [[ -f "split_pgn.sh" ]]; then
+        SPLIT_SCRIPT="split_pgn.sh"
+    elif [[ -f "pgn_split.sh" ]]; then
+        SPLIT_SCRIPT="pgn_split.sh"
+    else
+        echo -e "${RED}No split script found (split_pgn.sh or pgn_split.sh)!${NC}"
+        return
+    fi
 
-    read -p "Enter your choice: " choice
+    chmod +x "$SPLIT_SCRIPT"
+    cp "$SPLIT_SCRIPT" "$CURRENT_DIR"
 
-    case $choice in
-        1) check_part_1 ;;
-        2) check_part_2 ;;
-        3) echo -e "${BLUE}Exiting.${NC}"; break ;;
-        *) echo -e "${RED}Invalid choice. Please try again.${NC}" ;;
-    esac
-done
+    cd "$CURRENT_DIR"
+
+    if [[ $SHELL == *"cbash"* ]]; then
+        sed -i 's|#!/bin/bash|#!/bin/cbash|' "$SPLIT_SCRIPT"
+    fi
+
+    for TEST in $PART_1_TESTS; do
+        INPUT=$(echo "$TEST" | jq -r '.input')
+        OUTPUT_DIR=$(echo "$TEST" | jq -r '.output_dir')
+        EXPECTED_OUTPUT_DIR=$(echo "$TEST" | jq -r '.expected_output_directory')
+
+        echo -e "${YELLOW}----------------------------------------${NC}"
+        echo -e "${YELLOW}Running test with input: ${BLUE}$INPUT${NC}"
+        echo -e "${YELLOW}Output directory: ${BLUE}$OUTPUT_DIR${NC}"
+        echo -e "${YELLOW}----------------------------------------${NC}"
+
+        mkdir -p "$OUTPUT_DIR"
+
+        echo -e "${BLUE}Running the split script...${NC}"
+        if ! ./"$SPLIT_SCRIPT" "$INPUT" "$OUTPUT_DIR" > /dev/null 2>&1; then
+            echo -e "${RED}Failed to run the split script${NC}"
+            continue
+        fi
+
+        echo -e "${BLUE}Checking for missing files...${NC}"
+        check_missing_files "$OUTPUT_DIR" "$EXPECTED_OUTPUT_DIR"
+
+        echo -e "${BLUE}Comparing file contents...${NC}"
+        compare_file_contents "$OUTPUT_DIR" "$EXPECTED_OUTPUT_DIR"
+
+        echo -e "${BLUE}Cleaning up...${NC}"
+        rm -r "$OUTPUT_DIR"
+
+        echo -e "${YELLOW}----------------------------------------${NC}"
+    done
+
+    rm -f "$SPLIT_SCRIPT"
+    echo -e "${CYAN}========================================${NC}"
+    echo -e "${CYAN}         Tests for Part 1 completed         ${NC}"
+    echo -e "${CYAN}========================================${NC}\n\n"
+}
+
+run_part_2_tests() {
+    echo -e "${CYAN}========================================${NC}"
+    echo -e "${CYAN}          Beginning Tests for Part 2          ${NC}"
+    echo -e "${CYAN}========================================${NC}"
+
+    cd ..
+
+    if [[ -f "chess_sim.sh" ]]; then
+        CHESS_SIM_SCRIPT="chess_sim.sh"
+    else
+        echo -e "${RED}No chess simulator script found (chess_sim.sh)!${NC}"
+        return
+    fi
+
+    if [[ -f "chess_sim.py" ]]; then
+        CHESS_SIM_PY="chess_sim.py"
+    else
+        echo -e "${RED}No chess simulator script found (chess_sim.py)!${NC}"
+        return
+    fi
+
+    chmod +x "$CHESS_SIM_SCRIPT"
+    cp "$CHESS_SIM_SCRIPT" "$CURRENT_DIR"
+    cp "$CHESS_SIM_PY" "$CURRENT_DIR"
+
+    cd "$CURRENT_DIR"
+
+    if [[ $SHELL == *"cbash"* ]]; then
+        sed -i 's|#!/bin/bash|#!/bin/cbash|' "$CHESS_SIM_SCRIPT"
+    fi
+
+    TEST_NUM=0
+
+    for TEST in $PART_2_TESTS; do
+        ((TEST_NUM++))
+        INPUT_PATH_PGN=$(echo "$TEST" | jq -r '.input_path_pgn')
+        MOVES=$(echo "$TEST" | jq -r '.moves')
+
+        echo -e "${YELLOW}----------------------------------------${NC}"
+        echo -e "${YELLOW}Running test with input: ${BLUE}$INPUT_PATH_PGN${NC}"
+        echo -e "${YELLOW}Moves: ${BLUE}$MOVES${NC}"
+        echo -e "${YELLOW}----------------------------------------${NC}"
+
+        TEMP_DIR=$(mktemp -d)
+
+        echo -e "${BLUE}Running the chess simulator script...${NC}"
+
+        MOVES_WITH_ENTER=$(echo "$MOVES" | sed 's/./&\n/g')
+
+        # Run chess_sim.sh
+        echo -e "$MOVES_WITH_ENTER" | ./"$CHESS_SIM_SCRIPT" "$INPUT_PATH_PGN" > "$TEMP_DIR/student_output.txt" 2>&1
+
+        # Run chess_sim.py
+        echo -e "$MOVES_WITH_ENTER" | python3 "$CHESS_SIM_PY" "$INPUT_PATH_PGN" > "$TEMP_DIR/expected_output.txt" 2>&1
+
+        # Compare outputs
+        DIFF=$(diff -u "$TEMP_DIR/student_output.txt" "$TEMP_DIR/expected_output.txt")
+
+        if [[ -z "$DIFF" ]]; then
+            echo -e "${GREEN}Output matches the expected output.${NC}"
+        else
+            echo -e "${RED}Test $TEST_NUM failed.${NC}"
+            FAIL_DIR="fails/test_$TEST_NUM"
+            mkdir -p "$FAIL_DIR"
+            cp "$TEMP_DIR/student_output.txt" "$FAIL_DIR/student_output.txt"
+            cp "$TEMP_DIR/expected_output.txt" "$FAIL_DIR/expected_output.txt"
+        fi
+
+        echo -e "${BLUE}Cleaning up...${NC}"
+        rm -r "$TEMP_DIR"
+
+        echo -e "${YELLOW}----------------------------------------${NC}"
+    done
+
+    rm -f "$CHESS_SIM_SCRIPT"
+    rm -f "$CHESS_SIM_PY"
+
+    echo -e "${CYAN}========================================${NC}"
+    echo -e "${CYAN}         Tests for Part 2 completed         ${NC}"
+    echo -e "${CYAN}========================================${NC}\n\n"
+}
+
+run_part_2_special_tests() {
+    echo -e "${CYAN}========================================${NC}"
+    echo -e "${CYAN}      Beginning Tests for Part 2 Special     ${NC}"
+    echo -e "${CYAN}========================================${NC}"
+
+    cd ..
+
+    if [[ -f "chess_sim.sh" ]]; then
+        CHESS_SIM_SCRIPT="chess_sim.sh"
+    else
+        echo -e "${RED}No chess simulator script found (chess_sim.sh)!${NC}"
+        return
+    fi
+
+    if [[ -f "chess_sim.py" ]]; then
+        CHESS_SIM_PY="chess_sim.py"
+    else
+        echo -e "${RED}No chess simulator script found (chess_sim.py)!${NC}"
+        return
+    fi
+
+    chmod +x "$CHESS_SIM_SCRIPT"
+    cp "$CHESS_SIM_SCRIPT" "$CURRENT_DIR"
+    cp "$CHESS_SIM_PY" "$CURRENT_DIR"
+
+    cd "$CURRENT_DIR"
+
+    if [[ $SHELL == *"cbash"* ]]; then
+        sed -i 's|#!/bin/bash|#!/bin/cbash|' "$CHESS_SIM_SCRIPT"
+    fi
+
+    TEST_NUM=0
+    ALL_PASSED=1
+
+    for TEST in $PART_2_SPECIAL_TESTS; do
+        ((TEST_NUM++))
+        INPUT_PATH_PGN=$(echo "$TEST" | jq -r '.input_path_pgn')
+        MOVES=$(echo "$TEST" | jq -r '.moves')
+
+        echo -e "${YELLOW}----------------------------------------${NC}"
+        echo -e "${YELLOW}Running test with input: ${BLUE}$INPUT_PATH_PGN${NC}"
+        echo -e "${YELLOW}Moves: ${BLUE}$MOVES${NC}"
+        echo -e "${YELLOW}----------------------------------------${NC}"
+
+        TEMP_DIR=$(mktemp -d)
+
+        echo -e "${BLUE}Running the chess simulator script...${NC}"
+
+        MOVES_WITH_ENTER=$(echo "$MOVES" | sed 's/./&\n/g')
+
+        # Run chess_sim.sh
+        echo -e "$MOVES_WITH_ENTER" | ./"$CHESS_SIM_SCRIPT" "$INPUT_PATH_PGN" > "$TEMP_DIR/student_output.txt" 2>&1
+
+        # Run chess_sim.py
+        echo -e "$MOVES_WITH_ENTER" | python3 "$CHESS_SIM_PY" "$INPUT_PATH_PGN" > "$TEMP_DIR/expected_output.txt" 2>&1
+
+        # Compare outputs
+        DIFF=$(diff -u "$TEMP_DIR/student_output.txt" "$TEMP_DIR/expected_output.txt")
+
+        if [[ -z "$DIFF" ]]; then
+            echo -e "${GREEN}Output matches the expected output.${NC}"
+        else
+            echo -e "${RED}Special Test $TEST_NUM failed.${NC}"
+            ALL_PASSED=0
+            FAIL_DIR="fails/test_special_$TEST_NUM"
+            mkdir -p "$FAIL_DIR"
+            cp "$TEMP_DIR/student_output.txt" "$FAIL_DIR/student_output.txt"
+            cp "$TEMP_DIR/expected_output.txt" "$FAIL_DIR/expected_output.txt"
+        fi
+
+        echo -e "${BLUE}Cleaning up...${NC}"
+        rm -r "$TEMP_DIR"
+
+        echo -e "${YELLOW}----------------------------------------${NC}"
+    done
+
+    rm -f "$CHESS_SIM_SCRIPT"
+    rm -f "$CHESS_SIM_PY"
+
+    if [[ $ALL_PASSED -eq 1 ]]; then
+        echo -e "${GREEN}All special case tests passed! You will be getting 10 points bonus.${NC}"
+    fi
+
+    echo -e "${CYAN}========================================${NC}"
+    echo -e "${CYAN}     Tests for Part 2 Special completed     ${NC}"
+    echo -e "${CYAN}========================================${NC}\n\n"
+}
+
+CURRENT_DIR=$(pwd)
+
+PART_1_TESTS=$(jq -c '.part_1[]' "$CONFIG_FILE")
+PART_2_TESTS=$(jq -c '.part_2[]' "$CONFIG_FILE")
+PART_2_SPECIAL_TESTS=$(jq -c '.part_2_special[]' "$CONFIG_FILE")
+
+run_part_1_tests
+
+run_part_2_tests
+
+run_part_2_special_tests

@@ -40,8 +40,13 @@ game_content=""
 in_game=false
 
 # Read the file line by line
-while IFS= read -r line || [[ -n "$line" ]]; do
-    # Detect the start of a new game
+while IFS= read -r line || [[ "$line" == *$'\r' ]] || [[ -n "$line" ]]; do
+    # Detect the start of a new game/ a change so it will work with linux and windows
+    if [[ "$line" == *$'\r' ]]; then
+        line="${line%$'\r'}"
+    fi
+
+    # check if the line is the start of a new game/ a new game starts with [Event
     if [[ $line == "[Event "* ]]; then
         # If we are already in a game, save it before starting the new one
         if $in_game; then
@@ -49,6 +54,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
             game_number=$((game_number + 1))
             game_content=""
         fi
+        # Set the flag to indicate that we are in a game
         in_game=true
     fi
     # Accumulate game content
