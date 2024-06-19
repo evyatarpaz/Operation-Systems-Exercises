@@ -1,12 +1,7 @@
 #!/bin/bash
 
-# Check if a PGN file is provided as an argument
-# only for me, make sure the code is working.
-
-# if [ "$#" -ne 1 ]; then
-#     echo "Usage: $0 <pgn-file>"
-#     exit 1
-# fi
+# Name: Evyatar Paz
+# ID: 211788625
 
 # it being said that the code will resive a pgn file as an argument.
 #, with no need to check if the file exists

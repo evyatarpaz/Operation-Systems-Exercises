@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Name: Evyatar Paz
+# ID: 211788625
+
 # Check if the number of arguments is correct
 if [ "$#" -ne 2 ]; then
     echo "Usage: $0 <source_pgn_file> <destination_directory>"
