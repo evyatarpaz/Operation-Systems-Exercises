@@ -3,75 +3,67 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <sys/wait.h>
+#include <string.h>
 
-int main(int argc, char *argv[])
-{
-    /*
-        check if the number of arguments is correct, if not print an error message
-        *the number of correct arguments is 5
-        *the first argument is the name of the program
-        *the second argument is the message that the parent will write
-        *the third argument is the message that the first child will write
-        *the fourth argument is the message that the second child will write
-        *the fifth argument is the number of times that the parent will write the message
-    */
-    if (argc != 5){
+void write_to_file(const char *message, int count) {
+    int fd = open("output.txt", O_CREAT | O_WRONLY | O_APPEND, 0644);
+    if (fd == -1) {
+        perror("open");
+        exit(EXIT_FAILURE);
+    }
+
+    for (int i = 0; i < count; i++) {
+        if (write(fd, message, strlen(message)) == -1) {
+            perror("write");
+            close(fd);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    close(fd);
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 5) {
         fprintf(stderr, "Usage: %s <parent_message> <child1_message> <child2_message> <count>\n", argv[0]);
         return 1;
     }
-    int numOfTime = atoi(argv[4]);
-    int fdin = open("output.txt", O_CREAT | O_WRONLY | O_APPEND , 0644);
 
-    // if the file didn't open print an error message
-    if (fdin == -1){
-        perror("open");
-        return 1;
-    }
+    const char *parent_message = argv[1];
+    const char *child1_message = argv[2];
+    const char *child2_message = argv[3];
+    int count = atoi(argv[4]);
 
-    // create a child process (child)
-    pid_t pid = fork();
-
-    // if the child process didn't create print an error message
-    if (pid == -1){
+    pid_t pid1 = fork();
+    if (pid1 < 0) {
         perror("fork");
-        return 1;
+        exit(EXIT_FAILURE);
+    } else if (pid1 == 0) {
+        // First child process
+        write_to_file(child1_message, count);
+        exit(0);
     }
-
-    // what the child process will do (child)
-    if (pid == 0){
-
-        // create a second child process (grandchild)
-        pid_t pid2 = fork();
-
-        // if the second child process didn't create print an error message
-        if (pid2 == -1){
-            perror("fork");
-            return 1;
-        }
-        // what the second grandchild process will do (grandchild)
-        if (pid2 == 0){
-            // write the message of the second child to the file
-            for (int i = 0; i < numOfTime ; i++){
-                write(fdin, argv[3], sizeof(argv[3]));
-            }
-        }
-        // what the first child process will do (child)
-        else{
-            // wait for the second child to finish
-            wait(NULL);
-            // write the message of the first child to the file
-            for (int i = 0; i < numOfTime ; i++){
-                write(fdin, argv[2], sizeof(argv[2]));
-            }
-        }  
-    }
-    // what the parent process will do (parent)
-    else{
+    pid_t pid2 = fork();
+    if (pid2 < 0) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    } else if (pid2 == 0) {
+        // Second child process
+        // Wait for the first child process to complete
         wait(NULL);
-        // write the message of the parent to the file
-        for (int i = 0; i < numOfTime ; i++){
-            write(fdin, argv[1], sizeof(argv[1]));
-        }
+        write_to_file(child2_message, count);
+        exit(0);
     }
-    return 1;
+
+    // Parent process
+    // Wait for both child processes to complete
+    int status;
+    while (wait(&status) > 0);
+
+    // After both children have finished, parent writes to file
+    write_to_file(parent_message, count);
+
+    return 0;
 }
