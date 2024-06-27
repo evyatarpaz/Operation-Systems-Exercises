@@ -12,22 +12,22 @@
 
 // Structure to hold the buffer and original flags
 typedef struct {
-    int fd;                     // File descriptor for the opened file
+    int fd; // File descriptor for the opened file
 
-    char *read_buffer;          // Buffer for reading operations, holds data read from the file
-    char *write_buffer;         // Buffer for writing operations, holds data to be written to the file
+    char *read_buffer;  // Buffer for reading operations, holds data read from the file
+    char *write_buffer; // Buffer for writing operations, holds data to be written to the file
 
-    size_t read_buffer_size;    // Size of the read buffer, indicating how much data it can hold
-    size_t write_buffer_size;   // Size of the write buffer, indicating how much data it can hold
+    size_t read_buffer_size;  // Size of the read buffer, indicating how much data it can hold
+    size_t write_buffer_size; // Size of the write buffer, indicating how much data it can hold
 
-    size_t read_buffer_pos;     // Current position in the read buffer, indicating the next byte to be read
-    size_t write_buffer_pos;    // Current position in the write buffer, indicating the next byte to be written
+    size_t read_buffer_pos;  // Current position in the read buffer, indicating the next byte to be read
+    size_t write_buffer_pos; // Current position in the write buffer, indicating the next byte to be written
 
-    int flags;                  // File flags used to control file access modes and options (like O_RDONLY, O_WRONLY)
+    int flags; // File flags used to control file access modes and options (like O_RDONLY, O_WRONLY)
 
-    int preappend;              // Flag to remember if the O_PREAPPEND flag was used, indicating special handling for writes
-    
-    int last_op;                // Flag to remember the last operation performed on the file (read or write) when 0 is initialized 1 is write and 2 is read
+    int preappend; // Flag to remember if the O_PREAPPEND flag was used, indicating special handling for writes
+
+    int last_op; // Flag to remember the last operation performed on the file (read or write) when 0 is initialized 1 is write and 2 is read
 
 } buffered_file_t;
 

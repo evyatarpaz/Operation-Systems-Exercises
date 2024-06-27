@@ -1,38 +1,33 @@
 #include "buffered_open.h"
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 // Function to wrap the original open function
-buffered_file_t *buffered_open(const char *pathname, int flags, mode_t mode)
-{
+buffered_file_t *buffered_open(const char *pathname, int flags, mode_t mode) {
     int orginal_flags = flags;
     flags &= ~O_PREAPPEND;
     int fd = open(pathname, flags, mode);
-    if (fd == -1)
-    {
+    if (fd == -1) {
         return NULL;
     }
     buffered_file_t *bf = (buffered_file_t *)malloc(sizeof(buffered_file_t));
-    if (bf == NULL)
-    {
+    if (bf == NULL) {
         close(fd);
         return NULL;
     }
     bf->fd = fd;
     bf->read_buffer = (char *)malloc(BUFFER_SIZE);
-    if (bf->read_buffer == NULL)
-    {
+    if (bf->read_buffer == NULL) {
         close(fd);
         free(bf);
         return NULL;
     }
     bf->write_buffer = (char *)malloc(BUFFER_SIZE);
-    if (bf->write_buffer == NULL)
-    {
+    if (bf->write_buffer == NULL) {
         close(fd);
         free(bf->read_buffer);
         free(bf);
@@ -49,29 +44,23 @@ buffered_file_t *buffered_open(const char *pathname, int flags, mode_t mode)
 }
 
 // Function to write to the buffered file
-ssize_t buffered_write(buffered_file_t *bf, const void *buf, size_t count)
-{
+ssize_t buffered_write(buffered_file_t *bf, const void *buf, size_t count) {
     const char *data = (const char *)buf;
     size_t written = 0;
     bf->last_op = 1;
-    while (count > 0)
-    {
+    while (count > 0) {
         size_t space_left = bf->write_buffer_size - bf->write_buffer_pos;
         size_t to_copy;
-        if (count < space_left)
-        {
+        if (count < space_left) {
             to_copy = count;
-        }
-        else
-        {
+        } else {
             to_copy = space_left;
         }
         memcpy(bf->write_buffer + bf->write_buffer_pos, data + written, to_copy);
         bf->write_buffer_pos += to_copy;
         written += to_copy;
         count -= to_copy;
-        if (bf->write_buffer_pos == bf->write_buffer_size)
-        {
+        if (bf->write_buffer_pos == bf->write_buffer_size) {
             if (buffered_flush(bf) == -1)
                 return -1;
         }
@@ -80,37 +69,28 @@ ssize_t buffered_write(buffered_file_t *bf, const void *buf, size_t count)
 }
 
 // Function to read from the buffered file
-ssize_t buffered_read(buffered_file_t *bf, void *buf, size_t count)
-{
+ssize_t buffered_read(buffered_file_t *bf, void *buf, size_t count) {
     // Cast the buffer to a char pointer
-    char* data = (char *)buf;
+    char *data = (char *)buf;
 
     // Initialize the number of bytes read
     size_t read_bytes = 0;
 
     // Check if the last operation was a write
     // If so, flush the buffer to the file
-    if (bf->last_op == 1)
-    {
-        if (buffered_flush(bf) == -1)
-        {
+    if (bf->last_op == 1) {
+        if (buffered_flush(bf) == -1) {
             return -1;
         }
     }
-    while (count > 0)
-    {
-        if (bf->read_buffer_pos == bf->read_buffer_size || bf->last_op == 0)
-        {
+    while (count > 0) {
+        if (bf->read_buffer_pos == bf->read_buffer_size || bf->last_op == 0) {
             bf->last_op = 2;
             ssize_t bytes_read = read(bf->fd, bf->read_buffer, BUFFER_SIZE);
-            if (bytes_read <= 0)
-            {
-                if (read_bytes > 0)
-                {
+            if (bytes_read <= 0) {
+                if (read_bytes > 0) {
                     return read_bytes;
-                }
-                else
-                {
+                } else {
                     return bytes_read;
                 }
             }
@@ -120,12 +100,9 @@ ssize_t buffered_read(buffered_file_t *bf, void *buf, size_t count)
 
         size_t space_left = bf->read_buffer_size - bf->read_buffer_pos;
         size_t to_copy;
-        if (count < space_left)
-        {
+        if (count < space_left) {
             to_copy = count;
-        }
-        else
-        {
+        } else {
             to_copy = space_left;
         }
 
@@ -139,57 +116,47 @@ ssize_t buffered_read(buffered_file_t *bf, void *buf, size_t count)
 }
 
 // Function to flush the buffer to the file
-int buffered_flush(buffered_file_t *bf)
-{
+int buffered_flush(buffered_file_t *bf) {
     // Handle the case where the last operation was a write
-    if (bf->last_op == 1 && bf->write_buffer_pos > 0)
-    {
-        if (bf->preappend)
-        {
+    if (bf->last_op == 1 && bf->write_buffer_pos > 0) {
+        if (bf->preappend) {
             // Handle O_PREAPPEND logic
             // Save the current file offset
             off_t current_offset = lseek(bf->fd, 0, SEEK_CUR);
-            if (current_offset == -1)
-            {
+            if (current_offset == -1) {
                 return -1;
             }
 
             // Move to the end to determine file size
             off_t original_offset = lseek(bf->fd, 0, SEEK_END);
-            if (original_offset == -1)
-            {
+            if (original_offset == -1) {
                 return -1;
             }
 
             // Allocate a buffer for existing content
             char *temp_buffer = (char *)malloc(original_offset);
-            if (!temp_buffer)
-            {
+            if (!temp_buffer) {
                 return -1;
             }
 
             // Read the existing content
-            if (lseek(bf->fd, 0, SEEK_SET) == -1)
-            {
+            if (lseek(bf->fd, 0, SEEK_SET) == -1) {
                 free(temp_buffer);
                 return -1;
             }
             ssize_t existing_size = read(bf->fd, temp_buffer, original_offset);
-            if (existing_size == -1)
-            {
+            if (existing_size == -1) {
                 free(temp_buffer);
                 return -1;
             }
 
             // Write the new data to the beginning
-            if (lseek(bf->fd, 0, SEEK_SET) == -1)
-            {
+            if (lseek(bf->fd, 0, SEEK_SET) == -1) {
                 free(temp_buffer);
                 return -1;
             }
             ssize_t written = write(bf->fd, bf->write_buffer, bf->write_buffer_pos);
-            if (written == -1 || (size_t)written != bf->write_buffer_pos)
-            {
+            if (written == -1 || (size_t)written != bf->write_buffer_pos) {
                 free(temp_buffer);
                 return -1;
             }
@@ -197,71 +164,57 @@ int buffered_flush(buffered_file_t *bf)
             // Append the existing content
             ssize_t appended = write(bf->fd, temp_buffer, existing_size);
             free(temp_buffer);
-            if (appended == -1 || (size_t)appended != (size_t)existing_size)
-            {
+            if (appended == -1 || (size_t)appended != (size_t)existing_size) {
                 return -1;
             }
             bf->write_buffer_pos = 0;
 
             // Restore the original file offset
-            if (lseek(bf->fd, current_offset, SEEK_SET) == -1)
-            {
+            if (lseek(bf->fd, current_offset, SEEK_SET) == -1) {
                 return -1;
             }
-        }
-        else
-        {
+        } else {
             ssize_t written = write(bf->fd, bf->write_buffer, bf->write_buffer_pos);
-            if (written == -1 || (size_t)written != bf->write_buffer_pos)
-            {
+            if (written == -1 || (size_t)written != bf->write_buffer_pos) {
                 return -1;
             }
             bf->write_buffer_pos = 0;
         }
-    }
-    else if (bf->last_op == 2)
-    {
+    } else if (bf->last_op == 2) {
         // Handle the case where the last operation was a read
         // Ensure any buffered data is read before flushing
-        if (bf->preappend)
-        {
+        if (bf->preappend) {
             // Save the current file offset
             off_t current_offset = lseek(bf->fd, 0, SEEK_CUR);
-            if (current_offset == -1)
-            {
+            if (current_offset == -1) {
                 return -1;
             }
 
             // Move to the end to determine file size
             off_t original_offset = lseek(bf->fd, 0, SEEK_END);
-            if (original_offset == -1)
-            {
+            if (original_offset == -1) {
                 return -1;
             }
 
             // Allocate a buffer for existing content
             char *temp_buffer = (char *)malloc(original_offset);
-            if (!temp_buffer)
-            {
+            if (!temp_buffer) {
                 return -1;
             }
 
             // Read the existing content
-            if (lseek(bf->fd, 0, SEEK_SET) == -1)
-            {
+            if (lseek(bf->fd, 0, SEEK_SET) == -1) {
                 free(temp_buffer);
                 return -1;
             }
             ssize_t existing_size = read(bf->fd, temp_buffer, original_offset);
-            if (existing_size == -1)
-            {
+            if (existing_size == -1) {
                 free(temp_buffer);
                 return -1;
             }
 
             // Restore the original file offset
-            if (lseek(bf->fd, current_offset, SEEK_SET) == -1)
-            {
+            if (lseek(bf->fd, current_offset, SEEK_SET) == -1) {
                 free(temp_buffer);
                 return -1;
             }
@@ -269,11 +222,9 @@ int buffered_flush(buffered_file_t *bf)
         }
 
         // Ensure the write buffer is flushed after reading
-        if (bf->write_buffer_pos > 0)
-        {
+        if (bf->write_buffer_pos > 0) {
             ssize_t written = write(bf->fd, bf->write_buffer, bf->write_buffer_pos);
-            if (written == -1 || (size_t)written != bf->write_buffer_pos)
-            {
+            if (written == -1 || (size_t)written != bf->write_buffer_pos) {
                 return -1;
             }
             bf->write_buffer_pos = 0;
@@ -284,10 +235,8 @@ int buffered_flush(buffered_file_t *bf)
 }
 
 // Function to close the buffered file
-int buffered_close(buffered_file_t *bf)
-{
-    if (buffered_flush(bf) == -1)
-    {
+int buffered_close(buffered_file_t *bf) {
+    if (buffered_flush(bf) == -1) {
         return -1;
     }
     int ret = close(bf->fd);
