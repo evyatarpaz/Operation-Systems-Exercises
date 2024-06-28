@@ -1,0 +1,11 @@
+*.o
+a.out
+libcopytree.a
+output.txt
+output2.txt
+part1
+part2
+part3Test.c
+part4_program
+test3
+Test3Output.txt
