@@ -17,11 +17,9 @@ gcc -c copytree.c -o copytree.o
 ar rcs libcopytree.a copytree.o
 gcc part4.c -L. -lcopytree -o part4_program
 
-# Create destination directory
-mkdir -p destination_directory
 
 # Run the program
-./part4_program source_directory destination_directory
+./part4_program "./source_directory" "./destination_directory"
 
 # Verify the results
 echo "Verification of copied structure:"

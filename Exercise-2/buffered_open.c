@@ -48,6 +48,24 @@ ssize_t buffered_write(buffered_file_t *bf, const void *buf, size_t count) {
     const char *data = (const char *)buf;
     size_t written = 0;
     bf->last_op = 1;
+    if (count > bf->write_buffer_size) {
+        bf->write_buffer = (char *)realloc(bf->write_buffer, count);
+        if (bf->write_buffer == NULL) {
+            return -1;
+        }
+        memcpy(bf->write_buffer, data, count);
+        bf->write_buffer_pos = count;
+        bf->write_buffer_size = count;
+        if(buffered_flush(bf) == -1) {
+            return -1;
+        }
+        bf->write_buffer = (char *)realloc(bf->write_buffer, BUFFER_SIZE);
+        if (bf->write_buffer == NULL) {
+            return -1;
+        }
+        bf->write_buffer_size = BUFFER_SIZE;
+        return count;
+    }
     while (count > 0) {
         size_t space_left = bf->write_buffer_size - bf->write_buffer_pos;
         size_t to_copy;
@@ -180,7 +198,7 @@ int buffered_flush(buffered_file_t *bf) {
             }
             bf->write_buffer_pos = 0;
         }
-    } else if (bf->last_op == 2) {
+    } else if (bf->last_op == 2 && bf->write_buffer_pos > 0) {
         // Handle the case where the last operation was a read
         // Ensure any buffered data is read before flushing
         if (bf->preappend) {
@@ -213,16 +231,31 @@ int buffered_flush(buffered_file_t *bf) {
                 return -1;
             }
 
-            // Restore the original file offset
-            if (lseek(bf->fd, current_offset, SEEK_SET) == -1) {
+            // Write the new data to the beginning
+            if (lseek(bf->fd, 0, SEEK_SET) == -1) {
                 free(temp_buffer);
                 return -1;
             }
-            free(temp_buffer);
-        }
+            ssize_t written = write(bf->fd, bf->write_buffer, bf->write_buffer_pos);
+            if (written == -1 || (size_t)written != bf->write_buffer_pos) {
+                free(temp_buffer);
+                return -1;
+            }
 
-        // Ensure the write buffer is flushed after reading
-        if (bf->write_buffer_pos > 0) {
+            // Append the existing content
+            ssize_t appended = write(bf->fd, temp_buffer, existing_size);
+            free(temp_buffer);
+            if (appended == -1 || (size_t)appended != (size_t)existing_size) {
+                return -1;
+            }
+            bf->write_buffer_pos = 0;
+
+            // Restore the original file offset
+            if (lseek(bf->fd, current_offset, SEEK_SET) == -1) {
+                return -1;
+            }
+        } else {
+            // Ensure the write buffer is flushed after reading
             ssize_t written = write(bf->fd, bf->write_buffer, bf->write_buffer_pos);
             if (written == -1 || (size_t)written != bf->write_buffer_pos) {
                 return -1;
@@ -230,7 +263,6 @@ int buffered_flush(buffered_file_t *bf) {
             bf->write_buffer_pos = 0;
         }
     }
-
     return 0;
 }
 
