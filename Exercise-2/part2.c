@@ -20,7 +20,7 @@ int main(int argc, char *argv[]){
     // Check if the number of arguments is not under 4
     if (argc < 4){
         fprintf(stderr, "Usage: %s <message1> <message2> ... <count>\n", argv[0]);
-        return 1;
+        return 0;
     }
     // Get the number of time eche message will be printed
     int count = atoi(argv[argc - 1]);
@@ -56,5 +56,5 @@ int main(int argc, char *argv[]){
     // Parent process
     // Wait for all child processes to complete
     while (wait(NULL) > 0);
-    return 1;
+    return 0;
 }

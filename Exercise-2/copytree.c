@@ -112,7 +112,7 @@ void copy_directory(const char *src, const char *dest, int copy_symlinks, int co
             closedir(dir);
             exit(0);
         }
-    }else{
+    } else {
         if (mkdir(dest, 0755) == -1) {
             perror("mkdir");
             closedir(dir);
